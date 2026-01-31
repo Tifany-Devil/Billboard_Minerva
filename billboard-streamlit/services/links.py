@@ -1,8 +1,19 @@
-# services/links.py
+"""!
+@file services/links.py
+@brief Utilities to generate Spotify links without using the Spotify API.
+
+This module attempts to resolve a direct Spotify URL using a best-effort strategy:
+1) iTunes Search -> obtain a track URL
+2) Odesli (song.link) -> convert to platform links and pick Spotify
+3) Fallback to a Spotify Search URL
+
+All network calls use a retry-capable `requests.Session`.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Literal
+from typing import Optional, Literal
 from urllib.parse import quote
 
 import requests
@@ -18,11 +29,22 @@ Method = Literal["odesli", "search_fallback"]
 
 @dataclass(frozen=True)
 class SpotifyLinkResult:
+    """!
+    @brief Result of Spotify link resolution.
+
+    @param url Resolved Spotify URL (direct or search).
+    @param method Resolution method used.
+    """
+
     url: str
     method: Method
 
 
 def _build_session() -> requests.Session:
+    """!
+    @brief Create a requests session configured with retries and headers.
+    @return A configured `requests.Session`.
+    """
     s = requests.Session()
     retry = Retry(
         total=3,
@@ -40,9 +62,18 @@ def _build_session() -> requests.Session:
     return s
 
 
-def itunes_find_track_url(title: str, artist: str, session: Optional[requests.Session] = None) -> Optional[str]:
-    """
-    Busca no iTunes e retorna um URL (trackViewUrl) para usar como 'fonte' no Odesli.
+def itunes_find_track_url(
+    title: str, artist: str, session: Optional[requests.Session] = None
+) -> Optional[str]:
+    """!
+    @brief Search iTunes for a track and return its `trackViewUrl`.
+
+    The returned URL is typically used as the input for Odesli conversion.
+
+    @param title Track title.
+    @param artist Track artist.
+    @param session Optional `requests.Session` to reuse connections/retries.
+    @return A track URL if found, otherwise `None`.
     """
     term = f"{title} {artist}".strip()
     if not term:
@@ -67,9 +98,12 @@ def itunes_find_track_url(title: str, artist: str, session: Optional[requests.Se
 
 
 def odesli_get_spotify_url(source_url: str, session: Optional[requests.Session] = None) -> Optional[str]:
-    """
-    Converte um link (ex: iTunes/Apple Music) em links de plataformas.
-    Retorna o link do Spotify (se existir).
+    """!
+    @brief Convert a source URL (e.g., iTunes) into a Spotify URL using Odesli.
+
+    @param source_url Source track URL to convert.
+    @param session Optional `requests.Session` to reuse connections/retries.
+    @return Spotify URL if available, otherwise `None`.
     """
     if not source_url:
         return None
@@ -87,16 +121,29 @@ def odesli_get_spotify_url(source_url: str, session: Optional[requests.Session] 
 
 
 def spotify_search_url(title: str, artist: str) -> str:
+    """!
+    @brief Build a Spotify search URL for the given title and artist.
+
+    @param title Track title.
+    @param artist Track artist.
+    @return Spotify search URL.
+    """
     q = quote(f"{title} {artist}".strip())
     return f"https://open.spotify.com/search/{q}"
 
 
 def best_spotify_link(title: str, artist: str, session: Optional[requests.Session] = None) -> SpotifyLinkResult:
-    """
-    Retorna SpotifyLinkResult(url, method).
-    Tenta:
-      1) iTunes -> Odesli -> Spotify (melhor)
-      2) fallback: link de busca do Spotify
+    """!
+    @brief Resolve the best Spotify link for a track without using Spotify APIs.
+
+    Strategy:
+    - Try: iTunes -> Odesli -> Spotify (preferred)
+    - Fallback: Spotify search URL
+
+    @param title Track title.
+    @param artist Track artist.
+    @param session Optional `requests.Session` to reuse connections/retries.
+    @return A `SpotifyLinkResult` containing the URL and the resolution method.
     """
     s = session or _build_session()
     try:
@@ -106,7 +153,6 @@ def best_spotify_link(title: str, artist: str, session: Optional[requests.Sessio
             if sp:
                 return SpotifyLinkResult(url=sp, method="odesli")
     except Exception:
-        # silencioso: cai no fallback
         pass
 
     return SpotifyLinkResult(url=spotify_search_url(title, artist), method="search_fallback")

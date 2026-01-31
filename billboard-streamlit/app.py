@@ -1,3 +1,14 @@
+"""!
+@file app.py
+@brief Streamlit UI for browsing Billboard Hot 100 weekly charts and opening tracks on Spotify.
+
+The UI allows selecting a year/month/week and renders a table for the chosen Top N.
+Chart fetching uses [`services.billboard.fetch_hot100`](billboard-streamlit/services/billboard.py),
+and Spotify linking uses [`services.links.best_spotify_link`](billboard-streamlit/services/links.py).
+
+Caching is applied with Streamlit to avoid repeated network requests.
+"""
+
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
@@ -8,9 +19,6 @@ from services.billboard import fetch_hot100
 from services.links import best_spotify_link
 
 
-# -----------------------------
-# Identidade visual
-# -----------------------------
 ACCENT = "#E50914"
 BG = "#0A0A0B"
 PANEL = "#0F0F12"
@@ -21,7 +29,7 @@ BORDER = "rgba(255,255,255,0.12)"
 st.set_page_config(page_title="🔥 Hot Music", layout="wide")
 
 st.markdown(
-f"""
+    f"""
 <style>
 .stApp {{
   background:
@@ -37,14 +45,12 @@ small {{ color: {MUTED}; }}
 a {{ color: {TEXT} !important; text-decoration: none; }}
 a:hover {{ text-decoration: underline; }}
 
-/* Sidebar separada */
 section[data-testid="stSidebar"] {{
   background: linear-gradient(180deg, {PANEL}, rgba(15,15,18,0.90));
   border-right: 1px solid {BORDER};
 }}
 section[data-testid="stSidebar"] * {{ color: {TEXT}; }}
 
-/* Topbar */
 .topbar {{
   border: 1px solid {BORDER};
   background: linear-gradient(90deg, rgba(229,9,20,0.28), rgba(255,255,255,0.03));
@@ -77,14 +83,12 @@ section[data-testid="stSidebar"] * {{ color: {TEXT}; }}
   font-size: 12px;
 }}
 
-/* Botão */
 button[kind="primary"] {{
   background: rgba(229,9,20,0.94) !important;
   border: 1px solid rgba(255,255,255,0.12) !important;
 }}
 button[kind="primary"]:hover {{ filter: brightness(1.05); }}
 
-/* Dataframe */
 div[data-testid="stDataFrame"] {{
   border: 1px solid {BORDER};
   border-radius: 16px;
@@ -92,23 +96,40 @@ div[data-testid="stDataFrame"] {{
 }}
 </style>
 """,
-unsafe_allow_html=True,
+    unsafe_allow_html=True,
 )
 
 
-# -----------------------------
-# Helpers
-# -----------------------------
 @st.cache_data(ttl=60 * 60, show_spinner=False)
 def cached_hot100(date_str: str, top_n: int):
+    """!
+    @brief Cached wrapper for fetching the Hot 100 chart.
+    @param date_str Chart week in `YYYY-MM-DD`.
+    @param top_n Number of entries to return.
+    @return Parsed chart entries.
+    """
     return fetch_hot100(date_str, limit=top_n)
+
 
 @st.cache_data(ttl=60 * 60 * 6, show_spinner=False)
 def cached_spotify_link(title: str, artist: str):
+    """!
+    @brief Cached wrapper for resolving the best Spotify link for a track.
+    @param title Track title.
+    @param artist Track artist.
+    @return Tuple (spotify_url, method).
+    """
     res = best_spotify_link(title, artist)
     return res.url, res.method
 
+
 def month_saturdays(year: int, month: int):
+    """!
+    @brief Compute all Saturdays within a given month.
+    @param year Target year.
+    @param month Target month (1-12).
+    @return List of `date` objects for Saturdays in the month.
+    """
     first_day = date(year, month, 1)
     next_month = first_day + relativedelta(months=1)
     sats = []
@@ -119,9 +140,6 @@ def month_saturdays(year: int, month: int):
     return sats
 
 
-# -----------------------------
-# Sidebar
-# -----------------------------
 with st.sidebar:
     st.markdown("## 🔥 Hot Music")
     st.markdown("<small>As músicas e sucessos que fizeram história em cada ano.</small>", unsafe_allow_html=True)
@@ -142,13 +160,10 @@ with st.sidebar:
     st.markdown("<small>Observação: se o Billboard mudar o HTML, a extração pode falhar.</small>", unsafe_allow_html=True)
 
 
-# -----------------------------
-# Topbar (sem “Sem Spotify API”)
-# -----------------------------
 date_str = semana.strftime("%Y-%m-%d")
 
 st.markdown(
-f"""
+    f"""
 <div class="topbar">
   <div class="left">
     <div class="brand">🔥 Hot Music</div>
@@ -157,13 +172,10 @@ f"""
   <div class="pill">Semana: <b style="color:{TEXT};">{date_str}</b></div>
 </div>
 """,
-unsafe_allow_html=True,
+    unsafe_allow_html=True,
 )
 
 
-# -----------------------------
-# HERO bonito e visível (CSS dentro do iframe)
-# -----------------------------
 hero_iframe = f"""
 <!doctype html>
 <html>
@@ -269,7 +281,6 @@ hero_iframe = f"""
 </html>
 """
 
-# altura maior pra garantir visibilidade total
 components.html(hero_iframe, height=240, scrolling=False)
 
 st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
@@ -283,9 +294,6 @@ if not buscar:
     st.stop()
 
 
-# -----------------------------
-# Buscar + tabela (sem CSV)
-# -----------------------------
 with st.spinner("Coletando ranking do Billboard..."):
     try:
         songs = cached_hot100(date_str, int(qtd))
@@ -314,7 +322,7 @@ with st.spinner("Gerando links do Spotify..."):
 df = pd.DataFrame(rows)
 
 st.markdown(
-f"""
+    f"""
 <div style="border:1px solid {BORDER}; background: rgba(255,255,255,0.03); border-radius: 18px; padding: 18px;">
   <div style="display:flex; justify-content:space-between; align-items:end; gap:12px;">
     <div>
@@ -325,7 +333,7 @@ f"""
   </div>
 </div>
 """,
-unsafe_allow_html=True,
+    unsafe_allow_html=True,
 )
 
 st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)

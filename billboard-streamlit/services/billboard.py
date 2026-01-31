@@ -1,4 +1,13 @@
-# services/billboard.py
+"""!
+@file services/billboard.py
+@brief Fetch and parse Billboard Hot 100 charts.
+
+The parser prioritizes JSON-LD extraction for resilience against HTML changes and
+falls back to HTML scraping when JSON-LD is unavailable.
+
+All network calls use a retry-capable `requests.Session`.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
@@ -16,15 +25,31 @@ BILLBOARD_URL = "https://www.billboard.com/charts/hot-100/{date_str}/"
 
 @dataclass(frozen=True)
 class ChartEntry:
+    """!
+    @brief Represents a single chart entry.
+
+    @param rank Chart position (1..N).
+    @param title Track title.
+    @param artist Track artist.
+    """
+
     rank: int
     title: str
     artist: str
 
     def to_dict(self) -> Dict[str, str | int]:
+        """!
+        @brief Convert the entry into a JSON-serializable dict.
+        @return A dict with keys: rank, title, artist.
+        """
         return asdict(self)
 
 
 def _build_session() -> requests.Session:
+    """!
+    @brief Create a requests session configured with retries and headers.
+    @return A configured `requests.Session`.
+    """
     s = requests.Session()
     retry = Retry(
         total=3,
@@ -48,11 +73,26 @@ def _build_session() -> requests.Session:
 
 
 def _clean(x: str) -> str:
+    """!
+    @brief Normalize whitespace and trim.
+    @param x Input string.
+    @return Cleaned string.
+    """
     return re.sub(r"\s+", " ", (x or "").strip())
 
 
 def _parse_jsonld_itemlist(obj: dict, limit: int) -> List[ChartEntry]:
-    """Tenta extrair ItemList -> itemListElement (ListItem)."""
+    """!
+    @brief Extract entries from a JSON-LD ItemList structure.
+
+    Expected format:
+    - @type == "ItemList"
+    - itemListElement contains ListItem objects with `position` and `item`
+
+    @param obj Parsed JSON-LD object.
+    @param limit Maximum number of entries to return.
+    @return List of extracted `ChartEntry`.
+    """
     entries: List[ChartEntry] = []
 
     if obj.get("@type") != "ItemList":
@@ -97,7 +137,16 @@ def _parse_jsonld_itemlist(obj: dict, limit: int) -> List[ChartEntry]:
 
 
 def _parse_jsonld(soup: BeautifulSoup, limit: int) -> List[ChartEntry]:
-    """Extrai via JSON-LD (mais estável quando o HTML muda)."""
+    """!
+    @brief Extract chart entries via JSON-LD scripts.
+
+    This is the preferred parsing strategy because JSON-LD tends to be more stable
+    than HTML layout.
+
+    @param soup Parsed HTML document.
+    @param limit Maximum number of entries to return.
+    @return List of extracted `ChartEntry`.
+    """
     entries: List[ChartEntry] = []
 
     scripts = soup.select('script[type="application/ld+json"]')
@@ -113,7 +162,6 @@ def _parse_jsonld(soup: BeautifulSoup, limit: int) -> List[ChartEntry]:
 
         queue = data if isinstance(data, list) else [data]
 
-        # expande grafos
         expanded: List[dict] = []
         for obj in queue:
             if isinstance(obj, dict) and isinstance(obj.get("@graph"), list):
@@ -132,11 +180,18 @@ def _parse_jsonld(soup: BeautifulSoup, limit: int) -> List[ChartEntry]:
 
 
 def _parse_html_fallback(soup: BeautifulSoup, limit: int) -> List[ChartEntry]:
-    """Fallback se JSON-LD não estiver disponível."""
+    """!
+    @brief Fallback HTML parser for chart entries.
+
+    This is used only when JSON-LD extraction fails.
+
+    @param soup Parsed HTML document.
+    @param limit Maximum number of entries to return.
+    @return List of extracted `ChartEntry`.
+    """
     entries: List[ChartEntry] = []
     seen = set()
 
-    # seletor atual (pode mudar; por isso é fallback)
     h3s = soup.select("li.o-chart-results-list__item h3#title-of-a-story")
     for h3 in h3s:
         title = _clean(h3.get_text(" ", strip=True))
@@ -166,9 +221,13 @@ def _parse_html_fallback(soup: BeautifulSoup, limit: int) -> List[ChartEntry]:
 
 
 def fetch_hot100(date_str: str, limit: int = 10, session: Optional[requests.Session] = None) -> List[Dict]:
-    """
-    date_str: 'YYYY-MM-DD'
-    returns: list of dicts: {rank, title, artist}
+    """!
+    @brief Fetch and parse the Billboard Hot 100 for a given chart week.
+
+    @param date_str Chart week in the format `YYYY-MM-DD`.
+    @param limit Maximum number of entries to return.
+    @param session Optional `requests.Session` to reuse connections/retries.
+    @return List of dicts with keys: rank, title, artist.
     """
     if limit <= 0:
         return []
