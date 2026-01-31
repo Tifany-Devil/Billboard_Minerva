@@ -6,6 +6,8 @@ A app coleta o ranking do Billboard, extrai as músicas (preferindo JSON‑LD pa
 - melhor caso: **iTunes → Odesli → Spotify**
 - fallback: **Spotify Search URL**
 
+Link da aplicação: https://hotmusic-billboard.streamlit.app/
+
 ---
 
 ## O que você consegue fazer
